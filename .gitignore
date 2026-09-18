@@ -1,0 +1,13 @@
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.log
+
+# 依赖（本项目构建无第三方依赖，此条备用）
+node_modules/
+
+# IDE / 个人记忆（不纳入仓库）
+.codebuddy/
+
+# 临时文件
+*.tmp

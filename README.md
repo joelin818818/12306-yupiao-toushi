@@ -1,5 +1,7 @@
 # 12306余票全信息增强
 
+> 安装：[GreasyFork](https://greasyfork.org/zh-CN/scripts/596275)（自动更新） · [GitHub 仓库](https://github.com/joelin818818/12306-yupiao-toushi)
+
 在 12306 余票查询页增强展示：**车次局属、席位图鉴、票价折扣、车次等级与车型**。所有功能默认开启，无设置面板。
 
 功能整合自 [galaxy-sea/12306-seat-viewer](https://github.com/galaxy-sea/12306-seat-viewer)；数据接口复用 12306 官方接口。
@@ -15,11 +17,16 @@
 
 ## 安装
 
-1. 安装 Tampermonkey / Violentmonkey。
-2. 安装 `dist/12306余票全信息增强.user.js`（或发布后从 GreasyFork 安装）。
-3. 打开 [12306 余票查询页](https://kyfw.12306.cn/otn/leftTicket/init) 生效。
+- 安装油猴扩展（Tampermonkey / Violentmonkey）。
+- **推荐**：在 [GreasyFork](https://greasyfork.org/zh-CN/scripts/596275) 安装，可自动更新。
+- 或：直接安装本仓库 `dist/12306余票全信息增强.user.js`。
+- 打开 [12306 余票查询页](https://kyfw.12306.cn/otn/leftTicket/init) 生效。
 
 脚本仅向 `kyfw.12306.cn`（同域官方接口）发起请求，不上传任何个人数据。
+
+## 更新
+
+脚本通过 GitHub Webhook 与 GreasyFork 自动同步：每次 push 到 `main` 且 `src/meta.js` 的 `@version` 递增时，GreasyFork 上的脚本会自动更新，已安装用户随扩展检查周期获得新版本。
 
 ## 开发
 

@@ -7,8 +7,8 @@ const SRC_DIR = path.join(__dirname, 'src');
 const DIST_DIR = path.join(__dirname, 'dist');
 const DIST_FILE = path.join(DIST_DIR, '12306余票透视.user.js');
 
-// 拼接顺序很重要：先头信息，再依赖（config->api->emu->dom->ui），最后 main
-const ORDER = ['meta.js', 'config.js', 'api.js', 'emu.js', 'dom.js', 'ui.js', 'main.js'];
+// 拼接顺序很重要：先头信息，再依赖（api->dom->ui），最后 main
+const ORDER = ['meta.js', 'api.js', 'dom.js', 'ui.js', 'main.js'];
 
 if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR, { recursive: true });
 

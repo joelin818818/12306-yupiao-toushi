@@ -1,4 +1,5 @@
 // main.js — 主控：事件绑定、观察器、悬浮交互与模块编排
+// 所有功能默认开启（无设置面板）；车型取 12306 官方接口，按可视范围串行请求。
 (() => {
   UI.addStyles();
   const tooltip = UI.createTooltip();
@@ -9,59 +10,54 @@
   const metaCache = new Map();
   const seatCache = new Map();
 
-  function ensureAnchorStyle(tr) {
-    const anchor =
-      tr.querySelector('[id^="train_num_"] > div.train > div > a') ||
-      tr.querySelector('.train > div > a');
-    if (!anchor) return;
-    const style = anchor.getAttribute('style') || '';
-    const needsHeight = !/height\s*:/.test(style);
-    const needsLineHeight = !/line-height\s*:/.test(style);
-    if (!needsHeight && !needsLineHeight) return;
-    const merged = `${style}${needsHeight ? 'height: 18px;' : ''}${needsLineHeight ? 'line-height: 18px;' : ''}`;
-    anchor.setAttribute('style', merged.trim());
-  }
-
   function getMetaCacheKey(trainCode) {
     const d = API.getRunningDay();
     return d && trainCode ? `${d}|${trainCode}` : null;
   }
 
-  // 确切余票：在车次行首格注入「余票详情」按钮（需登录，点击才触发）
-  function addExactButton(tr) {
-    if (tr.dataset.svExactBtn === '1') return;
-    const cell = tr.querySelector('td');
-    if (!cell) return;
-    tr.dataset.svExactBtn = '1';
-    const btn = document.createElement('button');
-    btn.className = 'sv-exact-btn';
-    btn.textContent = '余票详情';
-    btn.title = '点击查询各席别确切余票（需登录 12306）';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const code = DOM.getTrainCode(tr);
-      const secret = DOM.getSecretStr(tr);
-      if (!secret) {
-        UI.showExact(code, null);
-        return;
-      }
-      UI.showExact(code, []);
-      API.fetchExactTickets(secret)
-        .then((list) => UI.showExact(code, list))
-        .catch(() => UI.showExact(code, null));
-    });
-    cell.appendChild(btn);
+  function renderRowTooltip(tr, meta, pics) {
+    tooltip.innerHTML = UI.renderTooltip(DOM.getTrainCode(tr), meta, pics);
+    scheduleTooltipPosition(tr);
   }
 
-  function handleEnter(event) {
-    const tr = event.currentTarget;
-    currentHover = tr;
-    currentTooltipPoint = { clientY: event.clientY };
-    ensureAnchorStyle(tr);
+  // 官方数据里是否带具体车型
+  function hasModelMeta(meta) {
+    return !!(meta && (meta.trainStyle || meta.carType));
+  }
 
-    if (!CONFIG.get('seat') && !CONFIG.get('bureau') && !CONFIG.get('emu')) {
-      return;
-    }
+  // 是否需要（重新）拉取：无缓存 → 拉；有缓存但缺车型且该行重试未超限 → 重拉
+  function shouldFetchMeta(tr, cached) {
+    if (cached === undefined) return true;
+    if (hasModelMeta(cached)) return false;
+    const retries = Number(tr.dataset.svMetaRetry || 0);
+    if (retries >= 2) return false;
+    tr.dataset.svMetaRetry = String(retries + 1);
+    return true;
+  }
+
+  // 官方未返回车型时安排一次自动重试（无悬停也刷新），每行最多 2 次
+  function scheduleModelRetry(tr, meta) {
+    if (hasModelMeta(meta)) return;
+    if (Number(tr.dataset.svMetaRetry || 0) >= 2) return;
+    if (!tr.isConnected) return;
+    setTimeout(() => {
+      if (tr.isConnected && !hasModelMeta(getCachedMeta(tr))) {
+        delete tr.dataset.svQueued;
+        applyVisibleBureauBadge(tr);
+      }
+    }, 3000);
+  }
+
+  function getCachedMeta(tr) {
+    const key = getMetaCacheKey(DOM.getTrainCode(tr));
+    return key && metaCache.has(key) ? metaCache.get(key) : undefined;
+  }
+
+  // 车次行与左侧面板行共用：显示悬浮窗、缓存命中即刷、按需请求
+  function showRowInfo(tr, clientY) {
+    currentHover = tr;
+    currentTooltipPoint = { clientY };
+    UI.highlightPanelRow(tr);
 
     const trainCode = DOM.getTrainCode(tr);
     const rawTrainCode = DOM.getRawTrainCode(tr);
@@ -72,50 +68,40 @@
     const seatKey = runningDay ? `${trainCode}|${runningDay}` : null;
     const seatCached = seatKey && seatCache.has(seatKey) ? seatCache.get(seatKey) : undefined;
 
-    let emu = null;
-    if (CONFIG.get('emu')) {
-      emu = EMU.getTrainModel(trainCode) || EMU.getIntercityModel(trainCode, DOM.getCoachClassId(tr));
-    }
+    if (metaCached !== undefined) applyRowMeta(tr, metaCached);
 
-    if (CONFIG.get('bureau') && metaCached) UI.applyBureauBadge(tr, metaCached);
-    if (CONFIG.get('emu') && emu) UI.applyEMUBadge(tr, emu, trainCode);
-
-    if (CONFIG.get('seat')) {
-      tooltip.innerHTML = UI.renderTooltip(trainCode, metaCached || undefined, seatCached || undefined, emu || undefined);
+    if (metaCached || seatCached) {
+      tooltip.innerHTML = UI.renderTooltip(trainCode, metaCached || undefined, seatCached || undefined);
       tooltip.style.visibility = 'hidden';
       tooltip.style.display = 'block';
       scheduleTooltipPosition(tr);
     }
 
-    if (CONFIG.get('bureau') && metaCached === undefined) {
+    if (shouldFetchMeta(tr, metaCached)) {
+      if (metaKey) metaCache.delete(metaKey);
       API.fetchTrainMeta(trainCode, rawTrainCode).then((meta) => {
         if (metaKey) metaCache.set(metaKey, meta);
-        UI.applyBureauBadge(tr, meta);
-        if (currentHover === tr && CONFIG.get('seat')) {
-          tooltip.innerHTML = UI.renderTooltip(
-            trainCode,
-            meta || undefined,
-            seatKey ? seatCache.get(seatKey) || undefined : undefined,
-            (EMU.getTrainModel(trainCode) || EMU.getIntercityModel(trainCode, DOM.getCoachClassId(tr))) || undefined
-          );
-          scheduleTooltipPosition(tr);
+        applyRowMeta(tr, meta);
+        scheduleModelRetry(tr, meta);
+        if (currentHover === tr) {
+          renderRowTooltip(tr, meta, seatKey ? seatCache.get(seatKey) || undefined : undefined);
         }
       });
     }
 
-    if (CONFIG.get('seat') && runningDay && seatCached === undefined) {
+    if (runningDay && seatCached === undefined) {
       API.fetchSeatPics(trainCode, runningDay).then((pics) => {
         if (seatKey) seatCache.set(seatKey, pics);
         if (currentHover === tr) {
           const meta = metaKey && metaCache.has(metaKey) ? metaCache.get(metaKey) : undefined;
-          const e = CONFIG.get('emu')
-            ? EMU.getTrainModel(trainCode) || EMU.getIntercityModel(trainCode, DOM.getCoachClassId(tr))
-            : null;
-          tooltip.innerHTML = UI.renderTooltip(trainCode, meta || undefined, pics || undefined, e || undefined);
-          scheduleTooltipPosition(tr);
+          renderRowTooltip(tr, meta || undefined, pics || undefined);
         }
       });
     }
+  }
+
+  function handleEnter(event) {
+    showRowInfo(event.currentTarget, event.clientY);
   }
 
   function handleLeave() {
@@ -123,6 +109,7 @@
     tooltip.style.visibility = 'hidden';
     currentHover = null;
     currentTooltipPoint = null;
+    UI.highlightPanelRow(null);
   }
 
   function handleMove(event) {
@@ -134,6 +121,16 @@
 
   function setTooltipPosition(point) {
     const offsetY = 30;
+    if (UI.DOCK_TOOLTIP_RIGHT) {
+      // 停靠模式：水平贴视口右缘，垂直页面居中并夹在视口内（恢复原样式只需关掉该开关）
+      const top = Math.max(
+        8,
+        (window.innerHeight - tooltip.offsetHeight) / 2
+      );
+      tooltip.style.left = `${window.innerWidth - tooltip.offsetWidth - 10}px`;
+      tooltip.style.top = `${top}px`;
+      return;
+    }
     const maxLeft = window.innerWidth - tooltip.offsetWidth - 8;
     const maxTop = window.innerHeight - tooltip.offsetHeight - offsetY;
     const centeredLeft = (window.innerWidth - tooltip.offsetWidth) / 2;
@@ -155,12 +152,7 @@
 
   function bindRows(rows) {
     rows.forEach((tr) => {
-      if (CONFIG.get('bureau')) {
-        observeVisibleRow(tr);
-      }
-      if (CONFIG.get('exact')) {
-        addExactButton(tr);
-      }
+      observeVisibleRow(tr);
       if (tr.dataset.svBound !== '1') {
         tr.dataset.svBound = '1';
         tr.addEventListener('mouseenter', handleEnter, { passive: true });
@@ -170,7 +162,7 @@
     });
   }
 
-  // 局属徽标：进入视口才请求，省流量
+  // 局属徽标 + 官方车型：进入视口才请求，省流量也避免高频
   function isNearViewport(el) {
     const margin = 120;
     const rect = el.getBoundingClientRect();
@@ -201,23 +193,50 @@
     }
     observeVisibleRow.observer.observe(tr);
   }
+  // 串行队列：批量请求间隔 150ms，避免同时打出十几个请求被 12306 限流
+  function createSerialQueue(gap) {
+    let chain = Promise.resolve();
+    return function enqueue(task) {
+      const run = chain.then(() => task());
+      chain = run.then(
+        () => new Promise((resolve) => setTimeout(resolve, gap)),
+        () => {}
+      );
+      return run;
+    };
+  }
+  const enqueueMeta = createSerialQueue(150);
+
   function applyVisibleBureauBadge(tr) {
     const trainCode = DOM.getTrainCode(tr);
     const rawTrainCode = DOM.getRawTrainCode(tr);
     if (!trainCode) return;
     const key = getMetaCacheKey(trainCode);
-    if (key && metaCache.has(key)) {
-      UI.applyBureauBadge(tr, metaCache.get(key));
+    // 持久缓存命中且含车型：即时填蓝字、免请求（重复查询/刷新秒出）
+    const stored = API.readStoredMeta(trainCode);
+    if (stored && (stored.trainStyle || stored.carType)) {
+      if (key) metaCache.set(key, stored);
+      applyRowMeta(tr, stored);
       return;
     }
-    API.fetchTrainMeta(trainCode, rawTrainCode).then((meta) => {
+    const cached = key && metaCache.has(key) ? metaCache.get(key) : undefined;
+    if (!shouldFetchMeta(tr, cached)) {
+      applyRowMeta(tr, cached || null);
+      return;
+    }
+    if (key) metaCache.delete(key); // 旧缓存缺车型，清掉重新拉
+    tr.dataset.svQueued = '1';
+    enqueueMeta(() => API.fetchTrainMeta(trainCode, rawTrainCode)).then((meta) => {
+      delete tr.dataset.svQueued;
       if (key) metaCache.set(key, meta);
-      UI.applyBureauBadge(tr, meta);
+      applyRowMeta(tr, meta);
+      scheduleModelRetry(tr, meta);
+    }, () => {
+      delete tr.dataset.svQueued;
     });
   }
-
-  function findRows(tbody) {
-    return DOM.findRows(tbody);
+  function applyRowMeta(tr, meta) {
+    UI.updateSidePanelRow(tr, meta);
   }
 
   function init() {
@@ -226,20 +245,23 @@
     if (!dateInput || !tbody) return;
     if (!dateInput.value?.trim()) return;
 
-    if (CONFIG.get('price')) UI.syncPrices(tbody);
+    UI.syncPrices(tbody);
 
-    const rows = findRows(tbody);
+    const rows = DOM.findRows(tbody);
+    UI.syncSidePanel(rows);
     if (!rows.length) return;
     bindRows(rows);
-    if (CONFIG.get('bureau')) scanVisibleBureauRows();
+    scanVisibleBureauRows();
   }
 
   function scanVisibleBureauRows() {
     const tbody = document.getElementById('queryLeftTable');
     if (!tbody) return;
-    findRows(tbody).forEach((tr) => {
+    DOM.findRows(tbody).forEach((tr) => {
       if (!isNearViewport(tr)) return;
-      if (tr.querySelector("[data-sv-bureau='1']")) return;
+      // 官方车型已就绪或请求已在队列 → 无需处理
+      if (hasModelMeta(getCachedMeta(tr))) return;
+      if (tr.dataset.svQueued === '1') return;
       applyVisibleBureauBadge(tr);
     });
   }
@@ -302,22 +324,20 @@
     if (observeScroll.bound) return;
     observeScroll.bound = true;
     window.addEventListener('scroll', scheduleVisibleBureauScan, { passive: true, capture: true });
-    window.addEventListener('resize', scheduleVisibleBureauScan, { passive: true });
+    // 窗口缩放改变表格文档位置，面板需重新对齐
+    window.addEventListener('resize', scheduleInit, { passive: true });
   }
 
   function start() {
+    UI.setSidePanelHandlers({
+      onEnter: (tr, clientY) => showRowInfo(tr, clientY),
+      onLeave: handleLeave,
+    });
     init();
     observeTable();
     observeRoot();
     observeScroll();
   }
-
-  // 动车组型号数据异步加载（失败不影响其它功能）
-  if (CONFIG.get('emu')) {
-    EMU.init().catch(() => {});
-  }
-
-  UI.buildSettings();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -325,3 +345,6 @@
     start();
   }
 })();
+
+/* 致谢：本脚本的车型 / 席位图功能思路整合自 galaxy-sea/12306-seat-viewer（Apache-2.0），
+   数据接口复用 12306 官方页面自身接口，仅作个人查询增强，不代抢、不高频。署名见 NOTICE / LICENSE。 */

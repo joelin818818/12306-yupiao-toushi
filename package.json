@@ -2,7 +2,7 @@
   "name": "12306-yupiao-toushi",
   "version": "1.0.0",
   "private": true,
-  "description": "12306余票透视 —— 在 12306 余票查询页增强展示车次局属、席位图鉴、票价折扣、动车组型号。整合 galaxy-sea/12306-seat-viewer 与 Arnie97/moerail-tools 之精华。",
+  "description": "12306余票全信息增强 —— 在 12306 余票查询页增强展示车次局属、车型车号、席位图鉴、票价折扣。功能整合自 galaxy-sea/12306-seat-viewer，数据复用 12306 官方接口。",
   "scripts": {
     "build": "node build.js"
   },

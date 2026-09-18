@@ -1,11 +1,11 @@
-// build.js — 将 src/ 模块按顺序拼接为可直接安装的油猴脚本 dist/12306余票透视.user.js
+// build.js — 将 src/ 模块按顺序拼接为可直接安装的油猴脚本 dist/12306余票全信息增强.user.js
 // 用法：node build.js
 const fs = require('fs');
 const path = require('path');
 
 const SRC_DIR = path.join(__dirname, 'src');
 const DIST_DIR = path.join(__dirname, 'dist');
-const DIST_FILE = path.join(DIST_DIR, '12306余票透视.user.js');
+const DIST_FILE = path.join(DIST_DIR, '12306余票全信息增强.user.js');
 
 // 拼接顺序很重要：先头信息，再依赖（api->dom->ui），最后 main
 const ORDER = ['meta.js', 'api.js', 'dom.js', 'ui.js', 'main.js'];

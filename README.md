@@ -16,7 +16,7 @@
 ## 安装
 
 1. 安装 Tampermonkey / Violentmonkey。
-2. 安装 `dist/12306余票透视.user.js`（或发布后从 GreasyFork 安装）。
+2. 安装 `dist/12306余票全信息增强.user.js`（或发布后从 GreasyFork 安装）。
 3. 打开 [12306 余票查询页](https://kyfw.12306.cn/otn/leftTicket/init) 生效。
 
 脚本仅向 `kyfw.12306.cn`（同域官方接口）发起请求，不上传任何个人数据。
@@ -31,7 +31,7 @@ src/
   ui.js      界面渲染：悬浮提示、徽标、票价角标、等级列
   main.js    主控：事件绑定、观察器、悬浮交互与编排
 build.js    Node 构建脚本（无第三方依赖）
-dist/       构建产物：可直接安装的 12306余票透视.user.js
+dist/       构建产物：可直接安装的 12306余票全信息增强.user.js
 ```
 
 构建：
